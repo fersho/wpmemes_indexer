@@ -126,3 +126,46 @@ function addMemesIndexerPage()
 
 register_activation_hook(__FILE__, 'addMemesIndexerPage');
 
+	
+function gutenberg_examples_01_register_block() {	
+ 	
+    // automatically load dependencies and version	
+    $asset_file = include( plugin_dir_path( __FILE__ ) . 'src/public/js/build/index.asset.php');	
+ 	
+    wp_register_script(	
+        'gutenberg-examples-01-esnext',	
+        plugins_url( 'src/public/js/build/index.js', __FILE__ ),	
+        $asset_file['dependencies'],	
+        $asset_file['version']	
+    );	
+ 	
+    register_block_type( 'gutenberg-examples/example-01-basic-esnext', array(	
+        'editor_script' => 'gutenberg-examples-01-esnext',	
+    ) );	
+ 	
+}	
+add_action( 'init', 'gutenberg_examples_01_register_block' );	
+add_action( 'init', 'searchmeme_rewrites_init' );	
+function searchmeme_rewrites_init(){	
+    add_rewrite_rule(	
+        'buscar/([a-zA-Z ]+)/?$',	
+        'index.php/buscar?meme=$matches[1]',	
+        'top' );	
+}	
+add_filter( 'query_vars', 'searchmeme_query_vars' );	
+function searchmeme_query_vars( $query_vars ){	
+    $query_vars[] = 'meme';	
+    return $query_vars;	
+}	
+add_action( 'template_include', function( $template ) {	
+    if ( get_query_var( 'meme' ) == false || get_query_var( 'meme' ) == '' ) {	
+        return $template;	
+    }	
+ 	
+    return  plugin_dir_path( __FILE__ ) . 'pages/search.php';	
+} );	
+add_filter('init','flushRules'); 	
+function flushRules(){ 	
+	global $wp_rewrite; 	
+	$wp_rewrite->flush_rules(); 	
+} 

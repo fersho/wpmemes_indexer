@@ -1,20 +1,51 @@
 <?php
 
 function addAdminPageContent() {
-  add_submenu_page('memes', 'Meme Image', 'Meme Image', 'manage_options', "memes_image", 'crudAdminPage');
+  add_menu_page('Memes', 'Memes', 'manage_options', "memes", 'crudAdminPage', 'dashicons-smiley');
 }
 
 add_action('admin_menu', 'addAdminPageContent');
-
 
 function crudAdminPage() {
   global $wpdb;
   $memesTableName = $wpdb->prefix . 'mein_memes';
   $keywordsTableName = $wpdb->prefix . 'mein_keywords';
   $memesKeywordsRelationTableName = $wpdb->prefix . 'mein_memes_keywords';
-  createMeme($memesTableName, $keywordsTableName, $memesKeywordsRelationTableName);
-  updateMeme($memesTableName, $keywordsTableName, $memesKeywordsRelationTableName);
-  deleteMeme($memesTableName, $memesKeywordsRelationTableName);
+
+  if (isset($_POST['newsubmit'])) {
+    $description = $_POST['newdescription'];
+    $wpdb->query("INSERT INTO $memesTableName(description) VALUES('$description')");
+    $lastMemeId = $wpdb->insert_id;
+
+    $keywords = $_POST['newkeywords'];
+    $keywordsArray = explode(",", $keywords); 
+    foreach ($keywordsArray as $keyword) {
+      $keywordNoSpace = strtolower(trim($keyword));
+      $keywordsExist = $wpdb->get_results("SELECT * FROM $keywordsTableName WHERE keyword = '$keywordNoSpace'");
+      $lastKeywordId = null;
+      if(count($keywordsExist) == 0) {
+        $wpdb->query("INSERT INTO $keywordsTableName(keyword) VALUES('$keywordNoSpace')");
+        $lastKeywordId = $wpdb->insert_id;
+      }else {
+        foreach ($keywordsExist as $keyword) {
+          $lastKeywordId = $keyword->id;
+        }
+      }
+      $wpdb->query("INSERT INTO $memesKeywordsRelationTableName(meme_id, keyword_id) VALUES('$lastMemeId', '$lastKeywordId')");
+    }
+    echo "<script>location.replace('admin.php?page=memes');</script>";
+  }
+  if (isset($_POST['uptsubmit'])) {
+    $id = $_POST['uptid'];
+    $description = $_POST['uptdescription'];
+    $wpdb->query("UPDATE $memesTableName SET description='$description' WHERE id='$id'");
+    echo "<script>location.replace('admin.php?page=memes');</script>";
+  }
+  if (isset($_GET['del'])) {
+    $del_id = $_GET['del'];
+    $wpdb->query("DELETE FROM $memesTableName WHERE id='$del_id'");
+    echo "<script>location.replace('admin.php?page=memes');</script>";
+  }
   ?>
   <div class="wrap">
     <h2>Memes</h2>
@@ -29,7 +60,7 @@ function crudAdminPage() {
         </tr>
       </thead>
       <tbody>
-        <form action="" method="post" enctype="multipart/form-data">
+      <form action='' method='post' enctype='multipart/form-data'>
           <tr>
             <td><input type="text" value="AUTO_GENERATED" disabled></td>
             <td><input type="text" id="newdescription" name="newdescription"></td>
@@ -40,11 +71,11 @@ function crudAdminPage() {
         </form>
         <?php
           $pageNumber = 0;
-          $pageLimit = 5;
+          $pageLimit = 20;
           if (isset($_GET['pagenumber'])) {
             $pageNumber = $_GET['pagenumber'];
           }
-          $memes = $wpdb->get_results("SELECT * FROM $memesTableName ORDER BY id DESC LIMIT $pageLimit OFFSET ".$pageNumber*$pageLimit);
+          $memes = $wpdb->get_results("SELECT * FROM $memesTableName LIMIT $pageLimit OFFSET ".$pageNumber*$pageLimit);
           foreach ($memes as $meme) {
             $keywords = $wpdb->get_results("SELECT k.* FROM $memesKeywordsRelationTableName mkr JOIN $keywordsTableName k ON k.id = mkr.keyword_id WHERE mkr.meme_id='$meme->id'");
             $keywordsField = "";
@@ -57,7 +88,7 @@ function crudAdminPage() {
                 <td width='25%'>$meme->id</td>
                 <td width='25%'>$meme->description</td>
                 <td width='25%'>$keywordsField</td>
-                <td width='25%'><img style=\"width:200px; height:100px; object-fit:contain;\" src='/lamemervaW/$meme->url' /></td>
+                <td width='25%'><img src='https://via.placeholder.com/200x100.jpg' /></td>
                 <td width='25%'><a href='admin.php?page=memes&upt=$meme->id'><button type='button'>UPDATE</button></a> <a href='admin.php?page=memes&del=$meme->id'><button type='button'>DELETE</button></a></td>
               </tr>
             ";
@@ -90,7 +121,7 @@ function crudAdminPage() {
               </tr>
             </thead>
             <tbody>
-              <form action='' method='post' enctype='multipart/form-data'>
+              <form action='' method='post'>
                 <tr>
                   <td width='25%'>$meme->id <input type='hidden' id='uptid' name='uptid' value='$meme->id'></td>
                   <td width='25%'><input type='text' id='uptdescription' name='uptdescription' value='$meme->description'></td>
@@ -116,105 +147,3 @@ function crudAdminPage() {
 
 }
 
-function deleteMeme($memesTableName, $memesKeywordsRelationTableName) {
-  global $wpdb;
-  if (isset($_GET['del'])) {
-    $del_id = $_GET['del'];
-    $wpdb->query("DELETE FROM $memesTableName WHERE id='$del_id'");
-    deleteKeywordsRelations($memesKeywordsRelationTableName, $id);
-    echo "<script>location.replace('admin.php?page=memes');</script>";
-  }
-}
-
-function updateMeme($memesTableName, $keywordsTableName, $memesKeywordsRelationTableName) {
-  global $wpdb;
-  if (isset($_POST['uptsubmit'])) {
-    $id = $_POST['uptid'];
-    $description = $_POST['uptdescription'];
-    $keywords = $_POST['uptkeywords'];
-    $updateImageUrl = "";
-    if(isset($_FILES["uptmemeimage"])) {
-      $imageUrl = uploadImage($_FILES["uptmemeimage"]);
-      if($imageUrl != "") {
-        $updateImageUrl = ", url='$imageUrl'";
-      }
-    }
-    $wpdb->query("UPDATE $memesTableName SET description='$description'$updateImageUrl WHERE id='$id'");
-    deleteKeywordsRelations($memesKeywordsRelationTableName, $id);
-    saveKeywordsRelations($id, $keywordsTableName, $memesKeywordsRelationTableName, $keywords);
-    echo "<script>location.replace('admin.php?page=memes');</script>";
-  }
-}
-
-function createMeme($memesTableName, $keywordsTableName, $memesKeywordsRelationTableName) {
-  global $wpdb;
-  if (isset($_POST['newsubmit'])) {
-    $imageUrl = "";
-    if(isset($_FILES["newmemeimage"])) {
-      $imageUrl = uploadImage($_FILES["newmemeimage"]);
-    }
-    $description = $_POST['newdescription'];
-    $wpdb->query("INSERT INTO $memesTableName(description, url) VALUES('$description', '$imageUrl')");
-    $lastMemeId = $wpdb->insert_id;
-    saveKeywordsRelations($lastMemeId, $keywordsTableName, $memesKeywordsRelationTableName, $_POST['newkeywords']);
-   
-    echo "<script>location.replace('admin.php?page=memes');</script>";
-  }
-}
-
-function deleteKeywordsRelations($memesKeywordsRelationTableName, $lastMemeId) {
-  global $wpdb;
-  $wpdb->query("DELETE FROM $memesKeywordsRelationTableName WHERE meme_id='$lastMemeId'");
-}
-
-function saveKeywordsRelations($lastMemeId, $keywordsTableName, $memesKeywordsRelationTableName, $keywords) {
-  global $wpdb;
-  meinlog("todos los keywords: ".$keywords);
-  $keywordsArray = explode(",", $keywords);
-
-  //saving keywords
-  foreach ($keywordsArray as $keyword) {
-    meinlog("el keyword:".$keyword);
-    $keywordNoSpace = strtolower(trim($keyword));
-    $keywordsExist = $wpdb->get_results("SELECT * FROM $keywordsTableName WHERE keyword = '$keywordNoSpace'");
-    $lastKeywordId = null;
-    if(count($keywordsExist) == 0) {
-      meinlog("el keyword no existe");
-      if($keywordNoSpace != "") {
-        $wpdb->query("INSERT INTO $keywordsTableName(keyword) VALUES('$keywordNoSpace')");
-        $lastKeywordId = $wpdb->insert_id;
-      }
-    }else {
-      foreach ($keywordsExist as $keyword) {
-        $lastKeywordId = $keyword->id;
-        meinlog("el keyword ya existe: ".$lastKeywordId);
-      }
-    }
-    if($lastKeywordId) {
-      $wpdb->query("INSERT INTO $memesKeywordsRelationTableName(meme_id, keyword_id) VALUES('$lastMemeId', '$lastKeywordId')");
-    }
-  }
-}
-
-function uploadImage($file) {
-  $imageUrl = "";
-  if($file["name"] != "") {
-    $today = new DateTime("NOW");
-    $movefile = wp_handle_upload($file, array('test_form' => FALSE), $today->format("Y-m-d h:i:s"));
-      
-    if ( $movefile && ! isset( $movefile['error'] ) ) {
-      $imageUrl = $movefile["url"];
-      $imageUrl = explode("wp-content", $imageUrl);
-      if(count($imageUrl)>1) {
-        $imageUrl = "/wp-content".$imageUrl[1];
-      }
-    } else {
-        /*
-        * Error generated by _wp_handle_upload()
-        * @see _wp_handle_upload() in wp-admin/includes/file.php
-        */
-        meinlog($movefile['error']);
-    }
-  }
-  return $imageUrl;
-}
